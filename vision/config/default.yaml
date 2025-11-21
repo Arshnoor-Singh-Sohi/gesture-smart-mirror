@@ -1,0 +1,54 @@
+camera:
+  device_id: 0
+  width: 640
+  height: 480
+  fps: 30
+
+detector:
+  model_complexity: 1
+  max_hands: 2
+  min_detection_confidence: 0.7
+  min_tracking_confidence: 0.7
+
+gestures:
+  # OPEN_PALM thresholds
+  open_palm_finger_threshold: 0.02
+  open_palm_min_fingers: 3
+  
+  # CLOSED_FIST thresholds
+  closed_fist_distance_threshold: 0.10
+  closed_fist_min_fingers: 4
+  
+  # PINCH thresholds
+  pinch_enter_threshold: 0.05
+  pinch_exit_threshold: 0.07
+  
+  # SWIPE thresholds
+  swipe_window_size: 8
+  swipe_dx_threshold: 0.08
+  swipe_dy_ratio: 0.8
+  
+  # PUSH_FORWARD thresholds
+  push_window_size: 8
+  push_size_increase_threshold: 0.15
+  push_z_threshold: 0.10
+
+websocket:
+  host: "0.0.0.0"
+  port: 8765
+
+performance:
+  show_fps: true
+  show_visualization: true
+  log_level: "INFO"
+
+
+state_machine:
+  # Number of consecutive frames gesture must be stable
+  stability_frames: 2
+  
+  # Cooldown period after triggering (milliseconds)
+  cooldown_ms: 600
+  
+  # Allow same gesture to repeat after cooldown
+  allow_same_gesture_repeat: false
