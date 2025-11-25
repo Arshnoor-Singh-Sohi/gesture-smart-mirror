@@ -8,6 +8,8 @@ import logging
 from typing import Optional, List, Tuple
 from dataclasses import dataclass
 from collections import deque
+import time
+
 
 from detector import HandLandmarks, HandLandmark, Landmark
 
@@ -37,6 +39,8 @@ class GestureClassifier:
     SWIPE_LEFT = "SWIPE_LEFT"
     SWIPE_RIGHT = "SWIPE_RIGHT"
     PUSH_FORWARD = "PUSH_FORWARD"
+    SWIPE_UP = "SWIPE_UP"
+    SWIPE_DOWN = "SWIPE_DOWN"
     
     def __init__(self, config: dict):
         """
@@ -60,10 +64,15 @@ class GestureClassifier:
         self.swipe_window = config.get('swipe_window_size', 10)
         self.swipe_dx_threshold = config.get('swipe_dx_threshold', 0.15)
         self.swipe_dy_ratio = config.get('swipe_dy_ratio', 0.5)
+        self.swipe_dy_threshold = config.get('swipe_dy_threshold', 0.08)
         
         self.push_window = config.get('push_window_size', 10)
         self.push_size_threshold = config.get('push_size_increase_threshold', 0.20)
         self.push_z_threshold = config.get('push_z_threshold', 0.15)
+        
+        # Cooldown tracking
+        self.last_gesture_time = {}
+        self.cooldown_ms = 3000  # 1000ms between same gesture
         
         # History for temporal gestures
         self.hand_history = [deque(maxlen=self.swipe_window) for _ in range(2)]
@@ -131,15 +140,28 @@ class GestureClassifier:
                         metadata['pinch_distance'] = self._get_pinch_distance(hand.landmarks)
             
             if gesture:
-                results.append(GestureResult(
-                    gesture=gesture,
-                    confidence=confidence,
-                    hand_id=hand_id,
-                    hand_center=hand_center,
-                    hand_size=hand_size,
-                    metadata=metadata
-                ))
-        
+                # Group related gestures for cooldown
+                if 'PINCH' in gesture:
+                    cooldown_key = 'PINCH'
+                elif 'SWIPE' in gesture:
+                    cooldown_key = 'SWIPE'  # All swipes share one timer
+                else:
+                    cooldown_key = gesture
+                
+                current_time = time.time() * 1000
+                last_time = self.last_gesture_time.get(cooldown_key, 0)
+                
+                if current_time - last_time >= self.cooldown_ms:
+                    self.last_gesture_time[cooldown_key] = current_time
+                    results.append(GestureResult(
+                        gesture=gesture,
+                        confidence=confidence,
+                        hand_id=hand_id,
+                        hand_center=hand_center,
+                        hand_size=hand_size,
+                        metadata=metadata
+                    ))
+                            
         return results
     
     def _detect_open_palm(self, landmarks: List[Landmark]) -> float:
@@ -243,13 +265,13 @@ class GestureClassifier:
     
     def _detect_swipe(self, hand_id: int) -> Optional[str]:
         """
-        Detect swipe gesture (lateral hand movement).
+        Detect swipe gesture (horizontal or vertical hand movement).
         
         Args:
             hand_id: Hand identifier
             
         Returns:
-            SWIPE_LEFT, SWIPE_RIGHT, or None
+            SWIPE_LEFT, SWIPE_RIGHT, SWIPE_UP, SWIPE_DOWN, or None
         """
         history = list(self.hand_history[hand_id])
         
@@ -262,15 +284,19 @@ class GestureClassifier:
         dx = end_pos[0] - start_pos[0]
         dy = end_pos[1] - start_pos[1]
         
-        # Must be mostly horizontal movement
-        if abs(dy) > abs(dx) * self.swipe_dy_ratio:
-            return None
-        
-        # Check if movement exceeds threshold
+        # Check horizontal swipes first (your original logic)
         if abs(dx) > self.swipe_dx_threshold:
-            # Clear history after detecting swipe to prevent repeated detections
-            self.hand_history[hand_id].clear()
-            return self.SWIPE_LEFT if dx < 0 else self.SWIPE_RIGHT
+            # Must be mostly horizontal movement
+            if abs(dy) <= abs(dx) * self.swipe_dy_ratio:
+                self.hand_history[hand_id].clear()
+                return self.SWIPE_LEFT if dx < 0 else self.SWIPE_RIGHT
+        
+        # Check vertical swipes (NEW)
+        if abs(dy) > self.swipe_dy_threshold:
+            # Must be mostly vertical movement
+            if abs(dx) <= abs(dy) * self.swipe_dy_ratio:
+                self.hand_history[hand_id].clear()
+                return self.SWIPE_UP if dy < 0 else self.SWIPE_DOWN
         
         return None
     

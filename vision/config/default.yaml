@@ -26,6 +26,7 @@ gestures:
   # SWIPE thresholds
   swipe_window_size: 8
   swipe_dx_threshold: 0.08
+  swipe_dy_threshold: 0.08 
   swipe_dy_ratio: 0.8
   
   # PUSH_FORWARD thresholds
