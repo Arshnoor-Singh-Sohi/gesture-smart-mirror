@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import dataService from '../services/dataService';
 
 const WeatherWidget = () => {
@@ -6,12 +6,27 @@ const WeatherWidget = () => {
     const [loading, setLoading] = useState(true);
     const [screen, setScreen] = useState('current'); // 'current', 'forecast', 'detail'
     const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+    const [currentTime, setCurrentTime] = useState(new Date());
+    const canvasRef = useRef(null);
+    const particlesRef = useRef([]);
 
     useEffect(() => {
         fetchWeather();
         const interval = setInterval(fetchWeather, 10 * 60 * 1000);
-        return () => clearInterval(interval);
+        const timeInterval = setInterval(() => setCurrentTime(new Date()), 1000);
+        
+        return () => {
+            clearInterval(interval);
+            clearInterval(timeInterval);
+        };
     }, []);
+
+    useEffect(() => {
+        if (weatherData && canvasRef.current) {
+            initParticles();
+            animateParticles();
+        }
+    }, [weatherData, screen]);
 
     const fetchWeather = async () => {
         try {
@@ -23,11 +38,85 @@ const WeatherWidget = () => {
         }
     };
 
+    // Particle system for weather effects
+    const initParticles = () => {
+        if (!canvasRef.current || !weatherData) return;
+        
+        const canvas = canvasRef.current;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        const condition = weatherData.current.condition.toLowerCase();
+        const count = condition.includes('rain') ? 150 : 
+                     condition.includes('snow') ? 100 : 
+                     condition.includes('cloud') ? 50 : 30;
+        
+        particlesRef.current = [];
+        
+        for (let i = 0; i < count; i++) {
+            particlesRef.current.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: condition.includes('rain') ? Math.random() * 2 + 1 : 
+                       condition.includes('snow') ? Math.random() * 4 + 2 : 
+                       Math.random() * 3 + 1,
+                speedY: condition.includes('rain') ? Math.random() * 8 + 5 : 
+                       condition.includes('snow') ? Math.random() * 2 + 0.5 : 
+                       Math.random() * 0.5 + 0.2,
+                speedX: condition.includes('snow') ? (Math.random() - 0.5) * 2 : 
+                       (Math.random() - 0.5) * 1,
+                opacity: Math.random() * 0.6 + 0.2
+            });
+        }
+    };
+
+    const animateParticles = () => {
+        if (!canvasRef.current || !weatherData) return;
+        
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const condition = weatherData.current.condition.toLowerCase();
+        
+        const animate = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            particlesRef.current.forEach(particle => {
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                
+                if (condition.includes('rain')) {
+                    ctx.fillStyle = `rgba(173, 216, 230, ${particle.opacity})`;
+                } else if (condition.includes('snow')) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
+                } else {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity * 0.5})`;
+                }
+                
+                ctx.fill();
+                
+                particle.y += particle.speedY;
+                particle.x += particle.speedX;
+                
+                if (particle.y > canvas.height) {
+                    particle.y = -10;
+                    particle.x = Math.random() * canvas.width;
+                }
+                
+                if (particle.x > canvas.width) particle.x = 0;
+                if (particle.x < 0) particle.x = canvas.width;
+            });
+            
+            requestAnimationFrame(animate);
+        };
+        
+        animate();
+    };
+
     // Gesture handlers
     useEffect(() => {
         window.weatherPinch = () => {
             if (screen === 'current') {
-                setSelectedDayIndex(0);  // Reset selection
+                setSelectedDayIndex(0);
                 setScreen('forecast');
             } else if (screen === 'forecast') {
                 setScreen('detail');
@@ -41,12 +130,8 @@ const WeatherWidget = () => {
         };
 
         window.weatherSwipeDown = () => {
-            console.log('weatherSwipeDown called, current index:', selectedDayIndex);
             if (screen === 'forecast' && weatherData) {
-                setSelectedDayIndex(prev => {
-                console.log('Updating from', prev, 'to', prev + 1);
-                return Math.min(weatherData.forecast.length - 1, prev + 1);
-                });
+                setSelectedDayIndex(prev => Math.min(weatherData.forecast.length - 1, prev + 1));
             }
         };
 
@@ -65,10 +150,14 @@ const WeatherWidget = () => {
 
     if (loading) {
         return (
-            <div className="weather-container">
-                <div className="loading-state">
-                    <div className="spinner"></div>
-                    <p>Loading weather data...</p>
+            <div className="weather-widget">
+                <div className="weather-loading">
+                    <div className="loading-spinner">
+                        <div className="spinner-ring"></div>
+                        <div className="spinner-ring spinner-ring-2"></div>
+                        <div className="spinner-ring spinner-ring-3"></div>
+                    </div>
+                    <p className="loading-text">Fetching weather data...</p>
                 </div>
             </div>
         );
@@ -76,8 +165,8 @@ const WeatherWidget = () => {
 
     if (!weatherData) {
         return (
-            <div className="weather-container">
-                <div className="error-state">
+            <div className="weather-widget">
+                <div className="weather-error">
                     <span className="error-icon">⚠️</span>
                     <p>Weather data unavailable</p>
                 </div>
@@ -87,18 +176,82 @@ const WeatherWidget = () => {
 
     const condition = weatherData.current.condition.toLowerCase();
     const selectedDay = weatherData.forecast[selectedDayIndex];
+    const currentTimeString = currentTime.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit'
+    });
+
+    const getWeatherBackground = () => {
+        if (condition.includes('rain')) return 'weather-bg-rain';
+        if (condition.includes('snow')) return 'weather-bg-snow';
+        if (condition.includes('cloud')) return 'weather-bg-cloudy';
+        return 'weather-bg-clear';
+    };
 
     return (
-        <div className={`weather-container weather-${condition.includes('rain') ? 'rain' : condition.includes('cloud') ? 'cloudy' : condition.includes('snow') ? 'snow' : 'clear'}`}>
-            {/* Animated Weather Background */}
-            <WeatherBackground condition={condition} />
+        <div className={`weather-widget ${getWeatherBackground()}`}>
+            {/* Particle Canvas */}
+            <canvas ref={canvasRef} className="weather-particles"></canvas>
 
-            {/* Gesture Guide - Always visible */}
-            <GestureGuide screen={screen} />
+            {/* Animated Background Elements */}
+            <div className="weather-background-elements">
+                {condition.includes('clear') && (
+                    <div className="sun-element">
+                        <div className="sun-core"></div>
+                        <div className="sun-rays"></div>
+                    </div>
+                )}
+                {condition.includes('cloud') && (
+                    <>
+                        <div className="cloud cloud-1"></div>
+                        <div className="cloud cloud-2"></div>
+                        <div className="cloud cloud-3"></div>
+                    </>
+                )}
+            </div>
+
+            {/* Gesture Guide */}
+            <div className="weather-gesture-guide">
+                {screen === 'current' && (
+                    <div className="gesture-hint">
+                        <span className="gesture-icon">🤏</span>
+                        <span>Pinch for 7-day forecast</span>
+                    </div>
+                )}
+                {screen === 'forecast' && (
+                    <>
+                        <div className="gesture-hint">
+                            <span className="gesture-icon">👆</span>
+                            <span>Previous</span>
+                        </div>
+                        <div className="gesture-hint">
+                            <span className="gesture-icon">👇</span>
+                            <span>Next</span>
+                        </div>
+                        <div className="gesture-hint">
+                            <span className="gesture-icon">🤏</span>
+                            <span>Details</span>
+                        </div>
+                        <div className="gesture-hint">
+                            <span className="gesture-icon">✊</span>
+                            <span>Back</span>
+                        </div>
+                    </>
+                )}
+                {screen === 'detail' && (
+                    <div className="gesture-hint">
+                        <span className="gesture-icon">✊</span>
+                        <span>Back to main</span>
+                    </div>
+                )}
+            </div>
 
             {/* Main Content */}
             {screen === 'current' && (
-                <CurrentWeatherScreen weatherData={weatherData} />
+                <CurrentWeatherScreen 
+                    weatherData={weatherData} 
+                    currentTime={currentTimeString}
+                />
             )}
 
             {screen === 'forecast' && (
@@ -115,254 +268,237 @@ const WeatherWidget = () => {
     );
 };
 
-// Animated Weather Background Component
-const WeatherBackground = ({ condition }) => {
-    if (condition.includes('rain')) {
-        return (
-            <div className="weather-bg rain-bg">
-                <div className="rain">
-                    {[...Array(50)].map((_, i) => (
-                        <div key={i} className="raindrop" style={{
-                            left: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 2}s`,
-                            animationDuration: `${0.5 + Math.random() * 0.5}s`
-                        }} />
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
-    if (condition.includes('snow')) {
-        return (
-            <div className="weather-bg snow-bg">
-                <div className="snow">
-                    {[...Array(50)].map((_, i) => (
-                        <div key={i} className="snowflake" style={{
-                            left: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 3}s`,
-                            animationDuration: `${3 + Math.random() * 2}s`
-                        }}>❄</div>
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
-    if (condition.includes('cloud')) {
-        return (
-            <div className="weather-bg cloudy-bg">
-                <div className="clouds">
-                    <div className="cloud cloud-1"></div>
-                    <div className="cloud cloud-2"></div>
-                    <div className="cloud cloud-3"></div>
-                </div>
-            </div>
-        );
-    }
-
-    // Clear/Sunny
-    return (
-        <div className="weather-bg sunny-bg">
-            <div className="sun">
-                <div className="sun-rays"></div>
-            </div>
-        </div>
-    );
-};
-
-// Gesture Guide Component
-// Gesture Guide Component
-const GestureGuide = ({ screen }) => {
-    const guides = {
-        current: [
-            { icon: '🤏', text: 'Pinch: View Forecast' }
-        ],
-        forecast: [
-            { icon: '👆', text: 'Swipe Up: Previous Day' },
-            { icon: '👇', text: 'Swipe Down: Next Day' },
-            { icon: '🤏', text: 'Pinch: View Details' },
-            { icon: '✊', text: 'Closed Fist: Back' }
-        ],
-        detail: [
-            { icon: '✊', text: 'Closed Fist: Back to Main' }
-        ]
-    };
-
-    return (
-        <div className="gesture-guide">
-            {guides[screen]?.map((guide, i) => (
-                <div key={i} className="gesture-item">
-                    <span className="gesture-icon">{guide.icon}</span>
-                    <span className="gesture-text">{guide.text}</span>
-                </div>
-            ))}
-        </div>
-    );
-};
-// Current Weather Screen
-const CurrentWeatherScreen = ({ weatherData }) => {
+// Current Weather Screen Component
+const CurrentWeatherScreen = ({ weatherData, currentTime }) => {
     const { current, location } = weatherData;
 
-    // Mock additional data
-    const feelsLike = Math.round(current.temperature - 2);
-    const todayHigh = Math.round(current.temperature + 5);
-    const todayLow = Math.round(current.temperature - 8);
-    const precipitation = 20;
-    const uvIndex = 6;
-    const pressure = 1013;
-    const visibility = 10;
-    const windDirection = 'NW';
-    const airQuality = 'Good';
-    const sunrise = '6:45 AM';
-    const sunset = '5:30 PM';
-
     return (
-        <div className="current-screen">
-            <div className="weather-header">
-                <h1>{location}</h1>
-                <p className="date">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+        <div className="current-weather-screen">
+            {/* Header */}
+            <div className="weather-header-modern">
+                <div className="header-location">
+                    <span className="location-icon">📍</span>
+                    <h1>{location}</h1>
+                </div>
+                <div className="header-time">
+                    <div className="time-display">{currentTime}</div>
+                    <div className="date-display">
+                        {new Date().toLocaleDateString('en-US', { 
+                            weekday: 'long', 
+                            month: 'long', 
+                            day: 'numeric' 
+                        })}
+                    </div>
+                </div>
             </div>
 
-            <div className="main-temp">
-                <div className="temp-display">
-                    <span className="temp-icon">{current.icon}</span>
-                    <span className="temp-value">{current.temperature}°</span>
+            {/* Main Temperature Display */}
+            <div className="temp-hero">
+                <div className="temp-icon-large">
+                    {current.icon}
                 </div>
-                <div className="temp-details">
-                    <p className="condition">{current.condition}</p>
-                    <p className="feels-like">Feels like {feelsLike}°</p>
-                    <p className="high-low">H: {todayHigh}° L: {todayLow}°</p>
+                <div className="temp-main">
+                    <div className="temp-value">{current.temperature}°</div>
+                    <div className="temp-unit">{current.tempUnit === '°F' ? 'Fahrenheit' : 'Celsius'}</div>
+                </div>
+                <div className="temp-condition">
+                    <div className="condition-text">{current.condition}</div>
+                    <div className="feels-like">Feels like {current.temperature - 2}°</div>
                 </div>
             </div>
 
-            <div className="weather-grid">
-                <div className="weather-card">
-                    <span className="card-icon">💧</span>
-                    <span className="card-label">Humidity</span>
-                    <span className="card-value">{current.humidity}%</span>
+            {/* Weather Stats Grid */}
+            <div className="weather-stats-grid">
+                <div className="stat-card">
+                    <div className="stat-icon">💧</div>
+                    <div className="stat-content">
+                        <div className="stat-label">Humidity</div>
+                        <div className="stat-value">{current.humidity}%</div>
+                    </div>
+                    <div className="stat-bar">
+                        <div 
+                            className="stat-bar-fill" 
+                            style={{ width: `${current.humidity}%` }}
+                        ></div>
+                    </div>
                 </div>
 
-                <div className="weather-card">
-                    <span className="card-icon">🌬️</span>
-                    <span className="card-label">Wind</span>
-                    <span className="card-value">{current.windSpeed} {current.windUnit}</span>
-                    <span className="card-sub">{windDirection}</span>
+                <div className="stat-card">
+                    <div className="stat-icon">🌬️</div>
+                    <div className="stat-content">
+                        <div className="stat-label">Wind Speed</div>
+                        <div className="stat-value">{current.windSpeed} {current.windUnit}</div>
+                    </div>
+                    <div className="stat-direction">Northwest</div>
                 </div>
 
-                <div className="weather-card">
-                    <span className="card-icon">🌧️</span>
-                    <span className="card-label">Precipitation</span>
-                    <span className="card-value">{precipitation}%</span>
+                <div className="stat-card">
+                    <div className="stat-icon">🌡️</div>
+                    <div className="stat-content">
+                        <div className="stat-label">Pressure</div>
+                        <div className="stat-value">1013 mb</div>
+                    </div>
+                    <div className="stat-trend">↑ Rising</div>
                 </div>
 
-                <div className="weather-card">
-                    <span className="card-icon">☀️</span>
-                    <span className="card-label">UV Index</span>
-                    <span className="card-value">{uvIndex}</span>
-                    <span className="card-sub">Moderate</span>
+                <div className="stat-card">
+                    <div className="stat-icon">☀️</div>
+                    <div className="stat-content">
+                        <div className="stat-label">UV Index</div>
+                        <div className="stat-value">6</div>
+                    </div>
+                    <div className="stat-warning">Moderate</div>
                 </div>
 
-                <div className="weather-card">
-                    <span className="card-icon">🧭</span>
-                    <span className="card-label">Pressure</span>
-                    <span className="card-value">{pressure}</span>
-                    <span className="card-sub">mb</span>
+                <div className="stat-card">
+                    <div className="stat-icon">👁️</div>
+                    <div className="stat-content">
+                        <div className="stat-label">Visibility</div>
+                        <div className="stat-value">10 km</div>
+                    </div>
                 </div>
 
-                <div className="weather-card">
-                    <span className="card-icon">👁️</span>
-                    <span className="card-label">Visibility</span>
-                    <span className="card-value">{visibility}</span>
-                    <span className="card-sub">km</span>
+                <div className="stat-card">
+                    <div className="stat-icon">🌅</div>
+                    <div className="stat-content">
+                        <div className="stat-label">Sunrise</div>
+                        <div className="stat-value">6:45 AM</div>
+                    </div>
                 </div>
 
-                <div className="weather-card">
-                    <span className="card-icon">🌅</span>
-                    <span className="card-label">Sunrise</span>
-                    <span className="card-value">{sunrise}</span>
+                <div className="stat-card">
+                    <div className="stat-icon">🌇</div>
+                    <div className="stat-content">
+                        <div className="stat-label">Sunset</div>
+                        <div className="stat-value">5:30 PM</div>
+                    </div>
                 </div>
 
-                <div className="weather-card">
-                    <span className="card-icon">🌇</span>
-                    <span className="card-label">Sunset</span>
-                    <span className="card-value">{sunset}</span>
-                </div>
-
-                <div className="weather-card full-width">
-                    <span className="card-icon">🍃</span>
-                    <span className="card-label">Air Quality</span>
-                    <span className="card-value">{airQuality}</span>
+                <div className="stat-card">
+                    <div className="stat-icon">🍃</div>
+                    <div className="stat-content">
+                        <div className="stat-label">Air Quality</div>
+                        <div className="stat-value">Good</div>
+                    </div>
+                    <div className="aqi-indicator aqi-good"></div>
                 </div>
             </div>
         </div>
     );
 };
 
-// Forecast Screen
+// Forecast Screen Component
 const ForecastScreen = ({ forecast, selectedIndex }) => {
     return (
-        <div className="forecast-screen">
-            <h2>7-Day Forecast</h2>
-            <div className="forecast-list">
-                {forecast.map((day, index) => (
-                    <div
-                        key={index}
-                        className={`forecast-item ${index === selectedIndex ? 'selected' : ''}`}
-                    >
-                        {index === selectedIndex && <div className="selection-indicator">👉</div>}
-                        <span className="day-name">{day.day}</span>
-                        <span className="day-icon">{day.icon}</span>
-                        <span className="day-condition">{day.condition}</span>
-                        <div className="day-temps">
-                            <span className="temp-high">{day.high}°</span>
-                            <span className="temp-separator">/</span>
-                            <span className="temp-low">{day.low}°</span>
+        <div className="forecast-screen-modern">
+            <h2 className="forecast-title">7-Day Forecast</h2>
+            
+            <div className="forecast-list-vertical">
+                {forecast.map((day, index) => {
+                    const isSelected = index === selectedIndex;
+                    
+                    return (
+                        <div
+                            key={index}
+                            className={`forecast-card-vertical ${isSelected ? 'selected' : ''}`}
+                            style={{ animationDelay: `${index * 0.1}s` }}
+                        >
+                            {isSelected && (
+                                <div className="selection-pulse"></div>
+                            )}
+                            
+                            {isSelected && (
+                                <div className="selection-arrow-left">→</div>
+                            )}
+                            
+                            <div className="forecast-day-name">{day.day}</div>
+                            <div className="forecast-icon-medium">{day.icon}</div>
+                            <div className="forecast-condition-text">{day.condition}</div>
+                            
+                            <div className="forecast-temps-row">
+                                <div className="temp-high">
+                                    <span className="temp-label">H</span>
+                                    <span className="temp-number">{day.high}°</span>
+                                </div>
+                                <div className="temp-divider-vertical"></div>
+                                <div className="temp-low">
+                                    <span className="temp-label">L</span>
+                                    <span className="temp-number">{day.low}°</span>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
-            <p className="selection-hint">Use 🤏 Pinch to view details</p>
+            
+            <div className="forecast-hint">
+                <span>👆 Swipe Up: Previous</span>
+                <span>•</span>
+                <span>👇 Swipe Down: Next</span>
+                <span>•</span>
+                <span>🤏 Pinch: View Details</span>
+            </div>
         </div>
     );
 };
 
-// Day Detail Screen
+// Day Detail Screen Component
 const DayDetailScreen = ({ day }) => {
     return (
-        <div className="detail-screen">
-            <h2>{day.day}</h2>
-            <div className="detail-main">
-                <span className="detail-icon">{day.icon}</span>
-                <p className="detail-condition">{day.condition}</p>
-                <div className="detail-temps">
-                    <div className="temp-item">
-                        <span className="temp-label">High</span>
-                        <span className="temp-value-large">{day.high}°</span>
+        <div className="detail-screen-modern">
+            <div className="detail-header">
+                <h2 className="detail-day">{day.day}</h2>
+                <div className="detail-icon-massive">{day.icon}</div>
+            </div>
+
+            <div className="detail-temp-display">
+                <div className="detail-condition">{day.condition}</div>
+                <div className="detail-temp-range">
+                    <div className="detail-temp-item">
+                        <span className="detail-temp-label">High</span>
+                        <span className="detail-temp-value">{day.high}°</span>
                     </div>
-                    <div className="temp-item">
-                        <span className="temp-label">Low</span>
-                        <span className="temp-value-large">{day.low}°</span>
+                    <div className="temp-range-bar">
+                        <div className="temp-range-fill"></div>
+                    </div>
+                    <div className="detail-temp-item">
+                        <span className="detail-temp-label">Low</span>
+                        <span className="detail-temp-value">{day.low}°</span>
                     </div>
                 </div>
             </div>
 
-            <div className="detail-grid">
-                <div className="detail-card">
-                    <span>💧 Humidity</span>
-                    <strong>65%</strong>
+            <div className="detail-stats">
+                <div className="detail-stat-card">
+                    <span className="detail-stat-icon">💧</span>
+                    <div className="detail-stat-info">
+                        <span className="detail-stat-label">Humidity</span>
+                        <span className="detail-stat-value">65%</span>
+                    </div>
                 </div>
-                <div className="detail-card">
-                    <span>🌬️ Wind</span>
-                    <strong>12 mph</strong>
+
+                <div className="detail-stat-card">
+                    <span className="detail-stat-icon">🌬️</span>
+                    <div className="detail-stat-info">
+                        <span className="detail-stat-label">Wind</span>
+                        <span className="detail-stat-value">12 mph</span>
+                    </div>
                 </div>
-                <div className="detail-card">
-                    <span>🌧️ Rain</span>
-                    <strong>30%</strong>
+
+                <div className="detail-stat-card">
+                    <span className="detail-stat-icon">🌧️</span>
+                    <div className="detail-stat-info">
+                        <span className="detail-stat-label">Precipitation</span>
+                        <span className="detail-stat-value">30%</span>
+                    </div>
                 </div>
-                <div className="detail-card">
-                    <span>☀️ UV</span>
-                    <strong>5</strong>
+
+                <div className="detail-stat-card">
+                    <span className="detail-stat-icon">☀️</span>
+                    <div className="detail-stat-info">
+                        <span className="detail-stat-label">UV Index</span>
+                        <span className="detail-stat-value">5</span>
+                    </div>
                 </div>
             </div>
         </div>

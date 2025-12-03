@@ -35,9 +35,11 @@ const App = () => {
 
     const connectWebSocket = () => {
         try {
+            console.log('🔌 Connecting to WebSocket:', wsUrl);
             const ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
+                console.log('✅ WebSocket connected');
                 setIsConnected(true);
                 ws.send(JSON.stringify({
                     type: 'config',
@@ -50,33 +52,40 @@ const App = () => {
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    console.log('📨 WebSocket message:', data);
+                    
                     if (data.type === 'gesture') {
+                        console.log('👋 Gesture detected:', data.gesture);
                         handleGesture(data.gesture);
                         if (data.landmarks) {
                             setLandmarks(data.landmarks);
                         }
                     }
                 } catch (err) {
-                    // Silently fail
+                    console.error('❌ Parse error:', err);
                 }
             };
 
             ws.onclose = () => {
+                console.log('🔴 WebSocket closed, reconnecting...');
                 setIsConnected(false);
                 setTimeout(connectWebSocket, 3000);
             };
 
-            ws.onerror = () => {
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
                 setIsConnected(false);
             };
 
             wsRef.current = ws;
         } catch (error) {
+            console.error('❌ Connection failed:', error);
             setTimeout(connectWebSocket, 3000);
         }
     };
 
     const handleGesture = (detectedGesture) => {
+        console.log('🎯 Handling gesture:', detectedGesture);
         setGesture(detectedGesture);
 
         setTimeout(() => {
@@ -85,21 +94,27 @@ const App = () => {
 
         switch (detectedGesture) {
             case 'SWIPE_LEFT':
+                console.log('→ Navigate previous');
                 navigateWidget('prev');
                 break;
             case 'SWIPE_RIGHT':
+                console.log('→ Navigate next');
                 navigateWidget('next');
                 break;
             case 'SWIPE_UP':
+                console.log('→ Swipe up');
                 handleSwipeUp();
                 break;
             case 'SWIPE_DOWN':
+                console.log('→ Swipe down');
                 handleSwipeDown();
                 break;
             case 'OPEN_PALM':
+                console.log('→ Open palm');
                 handleOpenPalm();
                 break;
             case 'CLOSED_FIST':
+                console.log('→ Closed fist');
                 const widgetName = widgets[currentWidget].name;
                 if (widgetName === 'Weather' && window.weatherClosedFist) {
                     window.weatherClosedFist();
@@ -108,14 +123,22 @@ const App = () => {
                 }
                 break;
             case 'PINCH_START':
+            case 'PINCH_HOLD':
+            case 'PINCH_END':
+                console.log('→ Pinch gesture');
                 handlePinch();
                 break;
+            case 'PUSH_FORWARD':
+                console.log('→ Push forward (ignored)');
+                break;
             default:
+                console.log('→ Unknown gesture:', detectedGesture);
                 break;
         }
     };
 
     const navigateWidget = (direction) => {
+        console.log('🔄 Widget navigation:', direction);
         if (direction === 'prev') {
             setCurrentWidget((prev) => (prev === 0 ? widgets.length - 1 : prev - 1));
         } else {
@@ -125,6 +148,7 @@ const App = () => {
 
     const handleSwipeUp = () => {
         const widgetName = widgets[currentWidget].name;
+        console.log('⬆️ Swipe up on:', widgetName);
         if (widgetName === 'Weather' && window.weatherSwipeUp) {
             window.weatherSwipeUp();
         } else if (widgetName === 'News' && window.newsScrollUp) {
@@ -136,6 +160,7 @@ const App = () => {
 
     const handleSwipeDown = () => {
         const widgetName = widgets[currentWidget].name;
+        console.log('⬇️ Swipe down on:', widgetName);
         if (widgetName === 'Weather' && window.weatherSwipeDown) {
             window.weatherSwipeDown();
         } else if (widgetName === 'News' && window.newsScrollDown) {
@@ -147,6 +172,7 @@ const App = () => {
 
     const handleOpenPalm = () => {
         const widgetName = widgets[currentWidget].name;
+        console.log('✋ Open palm on:', widgetName);
         if (widgetName === 'Weather' && window.weatherToggleView) {
             window.weatherToggleView();
         } else if (widgetName === 'News' && window.newsSelectItem) {
@@ -158,8 +184,13 @@ const App = () => {
 
     const handlePinch = () => {
         const widgetName = widgets[currentWidget].name;
+        console.log('🤏 Pinch on:', widgetName);
         if (widgetName === 'Weather' && window.weatherPinch) {
             window.weatherPinch();
+        } else if (widgetName === 'News' && window.newsSelectItem) {
+            window.newsSelectItem();
+        } else if (widgetName === 'Calendar' && window.calendarSelectItem) {
+            window.calendarSelectItem();
         }
     };
 
@@ -227,26 +258,6 @@ const App = () => {
                     <CurrentWidgetComponent />
                 </div>
 
-                {/* <div className="glass-card p-4 m-6 rounded-2xl">
-                    <div className="flex items-center justify-center gap-3 mb-3">
-                        {widgets.map((widget, index) => (
-                            <div
-                                key={index}
-                                className={`widget-indicator ${index === currentWidget ? 'active' : ''}`}
-                                style={{ width: index === currentWidget ? '40px' : '24px' }}
-                            />
-                        ))}
-                    </div>
-                    <div className="text-center">
-                        <p className="text-white font-semibold text-lg mb-1">
-                            {widgets[currentWidget].name}
-                        </p>
-                        <p className="text-white/60 text-sm">
-                            {currentWidget + 1} of {widgets.length}
-                        </p>
-                    </div>
-                </div> */}
-                {/* Remove 'glass-card' and add 'bg-transparent' */}
                 <div className="p-2 m-3">
                     <div className="flex items-center justify-center gap-3 mb-3">
                         {widgets.map((widget, index) => (
