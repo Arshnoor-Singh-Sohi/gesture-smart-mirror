@@ -31,27 +31,6 @@ Imagine controlling your smart mirror by simply waving your hand—no touching, 
 
 ---
 
-## 🎬 Visual Overview & Demos
-
-### Application Screenshots & Demos
-
-To fully understand the system in action, you should capture and include the following demonstrations:
-
-**Weather Widget Demo**
-
-*Demonstration showing: User swipes left/right to navigate widgets, uses open palm to toggle between current weather and forecast, and pinch gesture to view detailed day information.*
-
-**News Widget Demo**
-
-*Demonstration showing: User swipes up/down to scroll through news headlines, uses pinch gesture to open article details, and closed fist to return to list view.*
-
-**Gesture Detection Visualization**
-
-*Demonstration showing: Camera feed with MediaPipe hand landmarks overlaid, real-time gesture labels, and FPS counter.*
-
-
----
-
 ## ⚙️ Features Summary
 
 ### Core Features
